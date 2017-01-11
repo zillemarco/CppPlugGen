@@ -1,0 +1,26 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>CppSharp</id>
+    <version>0.7.12</version>
+    <authors>Dimitar Dobrev</authors>
+    <owners>João Matos,Dimitar Dobrev</owners>
+    <licenseUrl>https://opensource.org/licenses/MIT</licenseUrl>
+    <projectUrl>https://github.com/mono/CppSharp</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <developmentDependency>true</developmentDependency>
+    <description>CppSharp is a collection of libraries for working with C++ code from high-level languages.
+
+It has multiple use cases, from parsing C++ code to automatically generating bindings for wrapping C/C++ native code allowing interoperability with high-level languages. The supported target languages at present are C# (hence the name of the project) and C++/CLI.
+
+This can be used to consume an existing native library in your high-level code or add scripting support to a native codebase.
+
+The NuGet version is Windows 64-bit only for the time being. Binary 32-bit releases for Windows can be found at https://github.com/mono/CppSharp/releases .</description>
+    <summary>CppSharp is a collection of libraries for working with C++ code from high-level languages.</summary>
+    <releaseNotes>Ignored functions which use external types (through forward declarations).</releaseNotes>
+    <copyright>João Matos, Dimitar Dobrev</copyright>
+    <dependencies>
+      <dependency id="Baseclass.Contrib.Nuget.Output" version="2.1.0" />
+    </dependencies>
+  </metadata>
+</package>
