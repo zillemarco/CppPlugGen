@@ -26,7 +26,7 @@ solution "CppPlugGen"
 
   local action = _ACTION or ""
   
-  location ("build/" .. action)
+  location ("build/")
 
   objdir (path.join("./build/", "obj"))
   targetdir (path.join("./build/", "lib"))
@@ -48,7 +48,7 @@ solution "CppPlugGen"
     kind "ConsoleApp"
     language "C#"
     dotnetframework "4.6"
-    location ("build/" .. action)
+    location ("build/")
     
     objdir (path.join("./build/", "obj"))
     targetdir (path.join("./build/", "lib"))
