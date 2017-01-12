@@ -168,6 +168,8 @@ namespace CppSharp
         {
             ctx.SetClassAsValueType("CPluginInfo");
             ctx.SetClassAsValueType("CLoadModuleResult");
+            ctx.SetClassAsValueType("CCreatedPlugin");
+            ctx.SetClassAsValueType("CModuleDependenciesCollection");
 
             new CaseRenamePass(
                 RenameTargets.Function | RenameTargets.Method | RenameTargets.Property | RenameTargets.Delegate |
