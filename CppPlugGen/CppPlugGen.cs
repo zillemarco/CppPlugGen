@@ -8,6 +8,7 @@ using CppSharp.Passes;
 using CppSharp.Types;
 using CppAbi = CppSharp.Parser.AST.CppAbi;
 using CppSharp.Parser;
+using System.Diagnostics;
 
 namespace CppSharp
 {
@@ -19,18 +20,44 @@ namespace CppSharp
         internal readonly GeneratorKind Kind;
         internal readonly string Triple;
         internal readonly CppAbi Abi;
-        internal readonly string CppPlugLibPath;
-        internal readonly string TargetArch;
+        internal readonly string OutputPath;
         internal readonly bool IsGnuCpp11Abi;
 
-        public CppPlugGen(GeneratorKind kind, string triple, CppAbi abi, string cppPlugLibPath, string targetArch, bool isGnuCpp11Abi = false)
+        public CppPlugGen(GeneratorKind kind, string triple, CppAbi abi, string outputPath, bool isGnuCpp11Abi = false)
         {
             Kind = kind;
             Triple = triple;
             Abi = abi;
-            CppPlugLibPath = cppPlugLibPath;
-            TargetArch = targetArch;
+            OutputPath = outputPath;
             IsGnuCpp11Abi = isGnuCpp11Abi;
+        }
+
+        public static void DeleteDirectory(string target_dir)
+        {
+            string[] files = Directory.GetFiles(target_dir);
+            string[] dirs = Directory.GetDirectories(target_dir);
+
+            foreach (string file in files)
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+                File.Delete(file);
+            }
+
+            foreach (string dir in dirs)
+            {
+                DeleteDirectory(dir);
+            }
+
+            Directory.Delete(target_dir, false);
+        }
+
+        static public string GetTemporaryDirectory()
+        {
+            string tempFolder = Path.GetTempFileName();
+            File.Delete(tempFolder);
+            Directory.CreateDirectory(tempFolder);
+
+            return tempFolder;
         }
 
         static string GetSourceDirectory(string dir)
@@ -61,7 +88,6 @@ namespace CppSharp
             options.SharedLibraryName = "CppPlug.dll";
             options.GeneratorKind = Kind;
             options.Headers.Add("ModuleTools.hpp");
-            // options.Libraries.Add("CppPlug_dll.lib");
 
             if (Abi == CppAbi.Microsoft)
                 parserOptions.MicrosoftMode = true;
@@ -75,15 +101,9 @@ namespace CppSharp
             var basePath = GetSourceDirectory("src");
             parserOptions.AddIncludeDirs(basePath);
             parserOptions.AddLibraryDirs(".");
-            parserOptions.AddLibraryDirs(CppPlugLibPath);
-
-            options.OutputDir = Path.Combine(GetSourceDirectory("src"), "bindings", Kind.ToString().ToLower(), TargetArch);
-
-            // TODO     var extraTriple = IsGnuCpp11Abi ? "-cxx11abi" : string.Empty;
-            // TODO     
-            // TODO     if (Kind == GeneratorKind.CSharp)
-            // TODO         options.OutputDir = Path.Combine(options.OutputDir, parserOptions.TargetTriple + extraTriple);
-
+            
+            options.OutputDir = OutputPath;
+            
             options.OutputNamespace = "CppPlug";
             options.CheckSymbols = false;
             options.UnityBuild = true;
@@ -177,36 +197,71 @@ namespace CppSharp
                 RenameCasePattern.UpperCamelCase).VisitASTContext(driver.Context.ASTContext);
         }
 
+        static void Compile(string monoCompilerPath, List<string> files, string output)
+        {
+            string arguments = string.Format(@"-target:library -unsafe -out:{0} ", output);
+
+            foreach(string file in files)
+                arguments += file + " ";
+
+            var psi = new ProcessStartInfo(monoCompilerPath, arguments);
+            psi.UseShellExecute = false;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            psi.CreateNoWindow = true;
+
+            var proc = new Process();
+            proc.StartInfo = psi;
+            proc.OutputDataReceived += (s, e) => Console.WriteLine(e.Data);
+            proc.ErrorDataReceived += (s, e) => Console.WriteLine(e.Data);
+
+            try
+            {
+                proc.Start();
+
+                proc.BeginOutputReadLine();
+                proc.BeginErrorReadLine();
+
+                proc.WaitForExit();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+            }
+        }
+        
         public static void Main(string[] args)
         {
-            string cppPlugLibPath = "";
-
-            // if (args.Length == 1)
-            //     cppPlugLibPath = args[0];
-            // else
-            // {
-            //     Console.WriteLine("Invalid CppPlug lib path given.\n");
-            //     Console.WriteLine("Usage: CppPlugGen[.exe] <path to CppPlug lib directory>");
-            //     return;
-            // }
+            if (args.Length < 1)
+            {
+                Console.WriteLine("Usage: CppPlugGen.exe <path_to_mono_compiler_mcs>");
+                return;
+            }
             
+            string monoCompilerPath = args[0];
+
+            string bindingsOutputDir = Path.Combine(GetSourceDirectory("src"), "bindings");
+            string bindingsOutputDir_x86 = Path.Combine(bindingsOutputDir, "x86");
+            string bindingsOutputDir_x86_win = Path.Combine(bindingsOutputDir_x86, "win");
+
             if (Platform.IsWindows)
             {
-                // Not supported by CppPlug
-                //
-                // Console.WriteLine("Generating the C++/CLI parser bindings for Windows...");
-                // ConsoleDriver.Run(new CppPlugGen(GeneratorKind.CLI, "i686-pc-win32-msvc", CppAbi.Microsoft, cppPlugLibPath, "x86"));
-                // Console.WriteLine();
+                if(!Directory.Exists(bindingsOutputDir_x86_win))
+                    Directory.CreateDirectory(bindingsOutputDir_x86_win);
 
+                string outputDir = GetTemporaryDirectory();
+                
                 Console.WriteLine("Generating the C# parser bindings for Windows...");
-                ConsoleDriver.Run(new CppPlugGen(GeneratorKind.CSharp, "i686-pc-win32-msvc", CppAbi.Microsoft, cppPlugLibPath, "x86"));
+                ConsoleDriver.Run(new CppPlugGen(GeneratorKind.CSharp, "i686-pc-win32-msvc", CppAbi.Microsoft, outputDir));
                 Console.WriteLine();
 
-                // Not supported by CppPlug
-                //
-                // Console.WriteLine("Generating the C# 64-bit parser bindings for Windows...");
-                // ConsoleDriver.Run(new CppPlugGen(GeneratorKind.CSharp, "x86_64-pc-win32-msvc", CppAbi.Microsoft, cppPlugLibPath, "x64"));
-                // Console.WriteLine();
+                string cppPlugCSFile = Path.Combine(outputDir, "CppPlug.cs");
+                string stdCSFile = Path.Combine(outputDir, "Std.cs");
+                
+                Console.WriteLine("Compiling generated bindings for Windows...");
+                Compile(Path.Combine(monoCompilerPath, "mcs.bat"), new List<string>() { cppPlugCSFile, stdCSFile }, Path.Combine(bindingsOutputDir_x86_win, "CppPlug.Net.dll"));
+                
+                DeleteDirectory(outputDir);
             }
 
             // TODO     var osxHeadersPath = Path.Combine(GetSourceDirectory("build"), @"headers\osx");
