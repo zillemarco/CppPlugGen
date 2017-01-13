@@ -15,6 +15,8 @@ namespace CppSharp
     /// </summary>
     class CppPlugGen : ILibrary
     {
+        Driver Driver;
+
         internal readonly GeneratorKind Kind;
         internal readonly string Triple;
         internal readonly CppAbi Abi;
@@ -77,6 +79,8 @@ namespace CppSharp
 
         public void Setup(Driver driver)
         {
+            Driver = driver;
+
             var parserOptions = driver.ParserOptions;
             parserOptions.TargetTriple = Triple;
             parserOptions.Abi = Abi;
@@ -99,9 +103,9 @@ namespace CppSharp
             var basePath = GetSourceDirectory("src");
             parserOptions.AddIncludeDirs(basePath);
             parserOptions.AddLibraryDirs(".");
-            
+
             options.OutputDir = OutputPath;
-            
+
             options.OutputNamespace = "CppPlug";
             options.CheckSymbols = false;
             options.UnityBuild = true;
@@ -193,6 +197,56 @@ namespace CppSharp
                 RenameTargets.Function | RenameTargets.Method | RenameTargets.Property | RenameTargets.Delegate |
                 RenameTargets.Field | RenameTargets.Variable,
                 RenameCasePattern.UpperCamelCase).VisitASTContext(driver.Context.ASTContext);
+
+            Driver.Generator.OnUnitGenerated += ProcessUnit;
+        }
+        
+        public void WriteAdditionalClasses(TextGenerator g)
+        {
+            g.WriteLine(@"namespace CppPlug");
+            g.WriteLine(@"{");
+            g.WriteLine(@"    public unsafe partial class ModuleTools");
+            g.WriteLine(@"    {");
+            g.WriteLine(@"        public static IntPtr PluginToPtr<T>(T plugin)");
+            g.WriteLine(@"        {");
+            g.WriteLine(@"            if (!typeof(T).IsValueType)");
+            g.WriteLine(@"                throw new ArgumentException(""The given type is not valid: is must be a value type (a struct, not a class)"");");
+            g.WriteLine(@"            IntPtr pnt = Marshal.AllocHGlobal(Marshal.SizeOf(plugin));");
+            g.WriteLine(@"            Marshal.StructureToPtr(plugin, pnt, false);");
+            g.WriteLine(@"            return pnt;");
+            g.WriteLine(@"        }");
+            g.WriteLine(@"        public static T PtrToPlugin<T>(IntPtr plugin)");
+            g.WriteLine(@"        {");
+            g.WriteLine(@"            if (!typeof(T).IsValueType)");
+            g.WriteLine(@"                throw new ArgumentException(""The given type is not valid: is must be a value type (a struct, not a class)"");");
+            g.WriteLine(@"            return (T)Marshal.PtrToStructure(plugin, typeof(T));");
+            g.WriteLine(@"        }");
+            g.WriteLine(@"        public static void FreePlugin(IntPtr plugin)");
+            g.WriteLine(@"        {");
+            g.WriteLine(@"            Marshal.FreeHGlobal(plugin);");
+            g.WriteLine(@"        }");
+            g.WriteLine(@"        public static CModuleDependenciesCollection ToModuleDependenciesCollection(IntPtr ptr)");
+            g.WriteLine(@"        {");
+            g.WriteLine(@"            return (CModuleDependenciesCollection)Marshal.PtrToStructure(ptr, typeof(CModuleDependenciesCollection));");
+            g.WriteLine(@"        }");
+            g.WriteLine(@"    }");
+            g.WriteLine(@"}");
+        }
+
+        public void ProcessUnit(GeneratorOutput output)
+        {
+            if (output.TranslationUnit.FileName == "CppPlug.cs")
+            {
+                if (output.Templates != null)
+                {
+                    foreach (var template in output.Templates)
+                    {
+                        Block footer = new Block(BlockKind.Footer);
+                        WriteAdditionalClasses(footer.Text);
+                        template.AddBlock(footer);
+                    }
+                }
+            }
         }
 
         static void Compile(string monoCompilerPath, List<string> files, string output)
@@ -230,34 +284,29 @@ namespace CppSharp
         
         public static void Main(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length < 2)
             {
-                Console.WriteLine("Usage: CppPlugGen.exe <path_to_mono_compiler_mcs>");
+                Console.WriteLine("Usage: CppPlugGen.exe <path_to_mono_compiler_mcs> <path_to_output>");
                 return;
             }
-            
-            string monoCompilerPath = args[0];
 
-            string bindingsOutputDir = Path.Combine(GetSourceDirectory("src"), "bindings");
-            string bindingsOutputDir_x86 = Path.Combine(bindingsOutputDir, "x86");
-            string bindingsOutputDir_x86_win = Path.Combine(bindingsOutputDir_x86, "win");
+            string monoCompilerPath = args[0];
+            string bindingsOutputDir = args[1];
 
             if (Platform.IsWindows)
             {
-                if(!Directory.Exists(bindingsOutputDir_x86_win))
-                    Directory.CreateDirectory(bindingsOutputDir_x86_win);
-
                 string outputDir = GetTemporaryDirectory();
-                
+                Console.WriteLine(outputDir);
+
                 Console.WriteLine("Generating the C# parser bindings for Windows...");
                 ConsoleDriver.Run(new CppPlugGen(GeneratorKind.CSharp, "i686-pc-win32-msvc", CppAbi.Microsoft, outputDir));
                 Console.WriteLine();
-
+                
                 string cppPlugCSFile = Path.Combine(outputDir, "CppPlug.cs");
                 string stdCSFile = Path.Combine(outputDir, "Std.cs");
-                
+                                
                 Console.WriteLine("Compiling generated bindings for Windows...");
-                Compile(Path.Combine(monoCompilerPath, "mcs.bat"), new List<string>() { cppPlugCSFile, stdCSFile }, Path.Combine(bindingsOutputDir_x86_win, "CppPlug.Net.dll"));
+                Compile(Path.Combine(monoCompilerPath, "mcs.bat"), new List<string>() { cppPlugCSFile, stdCSFile }, Path.Combine(bindingsOutputDir, "CppPlug.Net.dll"));
                 
                 DeleteDirectory(outputDir);
             }
